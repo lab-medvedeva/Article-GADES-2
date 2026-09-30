@@ -1,0 +1,8 @@
+numpy
+scipy
+pandas
+psutil
+tqdm
+h5py
+matplotlib
+seaborn
