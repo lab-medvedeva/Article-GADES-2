@@ -43,6 +43,79 @@ g++ -O3 -std=c++17 test_arrayfire.cpp -o test_arrayfire -laf
 ```
 
 For an ArrayFire build tree that is not installed system-wide, add `-I<arrayfire>/include -I<arrayfire>/build/include -L<arrayfire>/build/src/api/unified` and put the directories of its `unified`, `cuda` and `cpu` libraries into `LD_LIBRARY_PATH`.
+## Docker
+
+Instead of Step 1, the benchmark can run in a container. The image holds CUDA 12.1, R with GADES and the R baselines, Python 3.12 with cuML, pandas and SciPy, Armadillo, ArrayFire 3.10 and the compiled drivers. The host needs an NVIDIA driver of version 530 or newer, Docker and the NVIDIA Container Toolkit.
+
+### Install the NVIDIA Container Toolkit
+
+Once per host, on Ubuntu or Debian (see the [installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) for other systems):
+
+```shell
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+Check that containers see the GPU:
+
+```shell
+docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi
+```
+
+### Get the image
+
+The image is published on Docker Hub:
+
+```shell
+docker pull akhtyamovpavel/article-gades-2
+```
+
+It can also be built from the root of this repository:
+
+```shell
+docker build -t akhtyamovpavel/article-gades-2 .
+```
+
+The build takes about an hour, most of it compiling ArrayFire, and the image takes about 16 GB. Build arguments:
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `GADES_COMMIT` | `main` | commit of https://github.com/lab-medvedeva/GADES-main to build |
+| `GADES_CUDA_ARCH` | `sm_86` | compute capability of the GPU GADES is compiled for (`sm_86` is the RTX 3090) |
+| `ARRAYFIRE_VERSION` | `v3.10.0` | tag of ArrayFire |
+| `CRAN_MIRROR` | `https://cloud.r-project.org` | CRAN mirror for the R packages |
+
+The published image is built with the defaults. 
+For another GPU, for example an A100, build it with `docker build --build-arg GADES_CUDA_ARCH=sm_80 -t akhtyamovpavel/article-gades-2 .`
+
+### Run the benchmark
+
+The container starts in `scripts/Benchmarking`. Mount the datasets of Step 2 and a directory for new results, so that the published `results/` stay untouched:
+
+```shell
+mkdir -p my-results
+docker run --rm --gpus all \
+    -v $PWD/Datasets:/workspace/Article-GADES-2/Datasets:ro \
+    -v $PWD/my-results:/workspace/Article-GADES-2/my-results \
+    article-gades-2 \
+    ./run_benchmark.sh real ../../Datasets/Real ../../my-results/RealDatasets
+```
+
+The other suites run the same way with `generated-dense ../../Datasets/GeneratedDense`, `generated-sparse ../../Datasets/GeneratedSparse` and `huge ../../Datasets/HugeDatasets`. Settings of Step 3 are passed with `-e`, for example `-e TIME_LIMIT=3600`. An interactive shell in the same environment:
+
+```shell
+docker run --rm -it --gpus all -v $PWD/Datasets:/workspace/Article-GADES-2/Datasets:ro article-gades-2 bash
+```
+
+The figures of Step 4 are drawn in the same image:
+
+```shell
+docker run --rm -v $PWD/figures:/workspace/Article-GADES-2/reproducibility/figures -w /workspace/Article-GADES-2 article-gades-2 python reproducibility/collect_real_results.py
+```
 
 ## Step 2. Datasets
 
